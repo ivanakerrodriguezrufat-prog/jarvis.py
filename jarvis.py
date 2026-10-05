@@ -643,7 +643,14 @@ def corregir_terminos(texto):
         "libreofice": "LibreOffice",
 
         "rtg5070": "RTX 5070",
-        "rtx5070": "RTX 5070"
+        "rtx5070": "RTX 5070",
+
+        "zodac": "Zotac",
+        "zodack": "Zotac",
+        "zotack": "Zotac",
+
+        "play station 5": "PlayStation 5",
+        "play station": "PlayStation"
     }
 
     for incorrecto, correcto in correcciones.items():
@@ -2552,51 +2559,278 @@ class BuscadorHTML(
             self.capturando_snippet = False
 
 
+class BuscadorGoogleHTML(
+    HTMLParser
+):
+
+    def __init__(self):
+
+        super().__init__()
+
+        self.resultados = []
+
+        self.enlace_actual = None
+
+        self.capturando_titulo = False
+        self.capturando_snippet = False
+
+        self.texto_actual = ""
+
+    def handle_starttag(
+        self,
+        tag,
+        attrs
+    ):
+
+        atributos = dict(
+            attrs
+        )
+
+        if tag == "a":
+
+            href = atributos.get(
+                "href",
+                ""
+            )
+
+            if href:
+
+                self.enlace_actual = href
+
+        if tag == "h3":
+
+            self.capturando_titulo = True
+            self.texto_actual = ""
+
+        if (
+            tag == "div"
+            and (
+                "VwiC3b"
+                in atributos.get(
+                    "class",
+                    ""
+                )
+                or
+                "aCOpRe"
+                in atributos.get(
+                    "class",
+                    ""
+                )
+            )
+        ):
+
+            self.capturando_snippet = True
+            self.texto_actual = ""
+
+    def handle_data(
+        self,
+        data
+    ):
+
+        if (
+            self.capturando_titulo
+            or
+            self.capturando_snippet
+        ):
+
+            self.texto_actual += data
+
+    def handle_endtag(
+        self,
+        tag
+    ):
+
+        if (
+            tag == "h3"
+            and self.capturando_titulo
+        ):
+
+            titulo = (
+                self.texto_actual.strip()
+            )
+
+            if (
+                titulo
+                and self.enlace_actual
+            ):
+
+                url = self.enlace_actual
+
+                if url.startswith(
+                    "/url?"
+                ):
+
+                    parametros = urllib.parse.parse_qs(
+                        urllib.parse.urlparse(
+                            url
+                        ).query
+                    )
+
+                    url = parametros.get(
+                        "q",
+                        [url]
+                    )[0]
+
+                self.resultados.append({
+
+                    "titulo":
+                        titulo,
+
+                    "url":
+                        url,
+
+                    "snippet":
+                        ""
+                })
+
+            self.capturando_titulo = False
+            self.texto_actual = ""
+
+        elif (
+            tag == "div"
+            and self.capturando_snippet
+        ):
+
+            snippet = (
+                self.texto_actual.strip()
+            )
+
+            if self.resultados:
+
+                self.resultados[
+                    -1
+                ][
+                    "snippet"
+                ] = snippet
+
+            self.capturando_snippet = False
+            self.texto_actual = ""
+
+
+def descargar_buscador_post(
+    url,
+    consulta
+):
+
+    datos = urllib.parse.urlencode({
+
+        "q":
+            consulta,
+
+        "kl":
+            "es-es",
+
+        "kp":
+            "-2"
+    }).encode(
+        "utf-8"
+    )
+
+    solicitud = urllib.request.Request(
+        url,
+        data=datos,
+        headers={
+
+            "User-Agent":
+                "Mozilla/5.0 "
+                "(Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 "
+                "(KHTML, like Gecko) "
+                "Chrome/154.0 Safari/537.36",
+
+            "Accept":
+                "text/html,application/xhtml+xml,"
+                "application/xml;q=0.9,*/*;q=0.8",
+
+            "Accept-Language":
+                "es-ES,es;q=0.9",
+
+            "Referer":
+                "https://duckduckgo.com/",
+
+            "Origin":
+                "https://duckduckgo.com",
+
+            "Sec-Fetch-Site":
+                "same-site",
+
+            "Sec-Fetch-Mode":
+                "navigate",
+
+            "Sec-Fetch-Dest":
+                "document",
+
+            "Sec-Fetch-User":
+                "?1"
+        },
+        method="POST"
+    )
+
+    with urllib.request.urlopen(
+        solicitud,
+        timeout=10
+    ) as respuesta:
+
+        return respuesta.read().decode(
+            "utf-8",
+            errors="ignore"
+        )
+
+
+def descargar_buscador_get(
+    url
+):
+
+    solicitud = urllib.request.Request(
+        url,
+        headers={
+
+            "User-Agent":
+                "Mozilla/5.0 "
+                "(Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 "
+                "(KHTML, like Gecko) "
+                "Chrome/154.0 Safari/537.36",
+
+            "Accept-Language":
+                "es-ES,es;q=0.9"
+        }
+    )
+
+    with urllib.request.urlopen(
+        solicitud,
+        timeout=10
+    ) as respuesta:
+
+        return respuesta.read().decode(
+            "utf-8",
+            errors="ignore"
+        )
+
+
 def buscar_internet(
     consulta
 ):
+
+    consulta = normalizar_consulta_busqueda(
+        consulta
+    )
 
     print(
         f"🌐 Buscando en Internet: "
         f"{consulta}"
     )
 
+    # --------------------------------------------------------
+    # 1. DUCKDUCKGO HTML POR POST
+    # --------------------------------------------------------
+
     try:
 
-        parametros = urllib.parse.urlencode({
-
-            "q":
-                consulta,
-
-            "kl":
-                "es-es"
-        })
-
-        url = (
-            "https://html.duckduckgo.com/"
-            f"html/?{parametros}"
+        html = descargar_buscador_post(
+            "https://html.duckduckgo.com/html/",
+            consulta
         )
-
-        solicitud = urllib.request.Request(
-            url,
-            headers={
-                "User-Agent":
-                    "Mozilla/5.0 "
-                    "(Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 "
-                    "Chrome/154.0 Safari/537.36"
-            }
-        )
-
-        with urllib.request.urlopen(
-            solicitud,
-            timeout=10
-        ) as respuesta:
-
-            html = respuesta.read().decode(
-                "utf-8",
-                errors="ignore"
-            )
 
         parser = BuscadorHTML()
 
@@ -2604,43 +2838,235 @@ def buscar_internet(
             html
         )
 
-        resultados = (
-            parser.resultados[:5]
-        )
+        resultados = parser.resultados[:5]
 
-        if not resultados:
-            return None
+        if resultados:
 
-        texto = ""
-
-        for i, resultado in enumerate(
-            resultados,
-            start=1
-        ):
-
-            texto += (
-                f"Resultado {i}\n"
-                f"Título: "
-                f"{resultado['titulo']}\n"
-                f"Resumen: "
-                f"{resultado['snippet']}\n\n"
+            print(
+                f"📄 {len(resultados)} "
+                f"resultados obtenidos "
+                f"(DuckDuckGo HTML)."
             )
 
-        print(
-            f"📄 {len(resultados)} "
-            f"resultados obtenidos."
-        )
-
-        return texto.strip()
+            return construir_informacion_resultados(
+                resultados
+            )
 
     except Exception as e:
 
         print(
-            f"⚠️ Error buscando en Internet: "
+            f"⚠️ DuckDuckGo HTML falló: "
             f"{e}"
         )
 
-        return None
+    # --------------------------------------------------------
+    # 2. DUCKDUCKGO LITE POR POST
+    # --------------------------------------------------------
+
+    try:
+
+        print(
+            "🔁 Probando DuckDuckGo Lite..."
+        )
+
+        html = descargar_buscador_post(
+            "https://lite.duckduckgo.com/lite/",
+            consulta
+        )
+
+        parser = BuscadorHTML()
+
+        parser.feed(
+            html
+        )
+
+        resultados = parser.resultados[:5]
+
+        if resultados:
+
+            print(
+                f"📄 {len(resultados)} "
+                f"resultados obtenidos "
+                f"(DuckDuckGo Lite)."
+            )
+
+            return construir_informacion_resultados(
+                resultados
+            )
+
+    except Exception as e:
+
+        print(
+            f"⚠️ DuckDuckGo Lite falló: "
+            f"{e}"
+        )
+
+    # --------------------------------------------------------
+    # 3. GOOGLE HTML
+    # --------------------------------------------------------
+
+    try:
+
+        print(
+            "🔁 Probando Google..."
+        )
+
+        parametros = urllib.parse.urlencode({
+
+            "q":
+                consulta,
+
+            "hl":
+                "es",
+
+            "gl":
+                "es",
+
+            "gbv":
+                "1",
+
+            "num":
+                "10"
+        })
+
+        url = (
+            "https://www.google.com/search?"
+            + parametros
+        )
+
+        html = descargar_buscador_get(
+            url
+        )
+
+        parser = BuscadorGoogleHTML()
+
+        parser.feed(
+            html
+        )
+
+        resultados = parser.resultados[:5]
+
+        if resultados:
+
+            print(
+                f"📄 {len(resultados)} "
+                f"resultados obtenidos "
+                f"(Google)."
+            )
+
+            return construir_informacion_resultados(
+                resultados
+            )
+
+    except Exception as e:
+
+        print(
+            f"⚠️ Google falló: "
+            f"{e}"
+        )
+
+    print(
+        "❌ Ningún buscador devolvió resultados."
+    )
+
+    return None
+
+
+def construir_informacion_resultados(
+    resultados
+):
+
+    texto = ""
+
+    for i, resultado in enumerate(
+        resultados,
+        start=1
+    ):
+
+        titulo = str(
+            resultado.get(
+                "titulo",
+                ""
+            )
+        ).strip()
+
+        url = str(
+            resultado.get(
+                "url",
+                ""
+            )
+        ).strip()
+
+        snippet = str(
+            resultado.get(
+                "snippet",
+                ""
+            )
+        ).strip()
+
+        texto += (
+            f"Resultado {i}\n"
+            f"Título: "
+            f"{titulo}\n"
+            f"URL: "
+            f"{url}\n"
+            f"Resumen: "
+            f"{snippet}\n\n"
+        )
+
+    return texto.strip()
+
+
+def normalizar_consulta_busqueda(
+    consulta
+):
+
+    consulta = str(
+        consulta
+    ).strip()
+
+    consulta = re.sub(
+        r"\bplay\s+station\s+5\b",
+        "PlayStation 5",
+        consulta,
+        flags=re.IGNORECASE
+    )
+
+    consulta = re.sub(
+        r"\bplay\s+station\b",
+        "PlayStation",
+        consulta,
+        flags=re.IGNORECASE
+    )
+
+    consulta = re.sub(
+        r"\bRTX\s*(\d{4})\s*GB\b",
+        r"RTX \1",
+        consulta,
+        flags=re.IGNORECASE
+    )
+
+    consulta = re.sub(
+        r"\bRTX\s*(\d{4})\b",
+        r"RTX \1",
+        consulta,
+        flags=re.IGNORECASE
+    )
+
+    consulta = re.sub(
+        r"\bZodac\b",
+        "Zotac",
+        consulta,
+        flags=re.IGNORECASE
+    )
+
+    consulta = re.sub(
+        r"\s+",
+        " ",
+        consulta
+    ).strip()
+
+    return consulta
 
 
 def extraer_respuesta_gemma(
@@ -2796,12 +3222,6 @@ def extraer_datos_relevantes_web(
         )
 
         texto = re.sub(
-            r"//duckduckgo\.com/\S+",
-            "",
-            texto
-        )
-
-        texto = re.sub(
             r"\s+",
             " ",
             texto
@@ -2814,8 +3234,113 @@ def extraer_datos_relevantes_web(
     return resultados
 
 
+def normalizar_importe(
+    precio_texto
+):
+
+    s = str(
+        precio_texto
+    ).strip()
+
+    s = re.sub(
+        r"(?i)euros?|EUR|€",
+        "",
+        s
+    )
+
+    s = re.sub(
+        r"\s+",
+        "",
+        s
+    )
+
+    if not s:
+        raise ValueError()
+
+    if (
+        ","
+        in s
+        and "."
+        in s
+    ):
+
+        if (
+            s.rfind(",")
+            >
+            s.rfind(".")
+        ):
+
+            s = (
+                s.replace(
+                    ".",
+                    ""
+                )
+                .replace(
+                    ",",
+                    "."
+                )
+            )
+
+        else:
+
+            s = s.replace(
+                ",",
+                ""
+            )
+
+    elif "," in s:
+
+        partes = s.rsplit(
+            ",",
+            1
+        )
+
+        if (
+            len(partes[1]) <= 2
+        ):
+
+            s = (
+                partes[0]
+                + "."
+                + partes[1]
+            )
+
+        else:
+
+            s = s.replace(
+                ",",
+                ""
+            )
+
+    elif "." in s:
+
+        partes = s.split(
+            "."
+        )
+
+        if (
+            len(partes) > 1
+            and
+            len(partes[-1]) == 3
+            and
+            all(
+                parte.isdigit()
+                for parte in partes
+            )
+        ):
+
+            s = "".join(
+                partes
+            )
+
+    return float(
+        s
+    )
+
+
 def extraer_precios_web(
-    informacion
+    informacion,
+    consulta=""
 ):
 
     textos = extraer_datos_relevantes_web(
@@ -2825,76 +3350,137 @@ def extraer_precios_web(
     if not textos:
         return []
 
-    patrones = [
+    patron_numero_euro = re.compile(
+        r"(?<![\d.,])"
+        r"(?:"
+        r"\d{1,3}(?:[.\s]\d{3})+"
+        r"(?:,\d{1,2})?"
+        r"|"
+        r"\d+(?:[.,]\d{1,2})?"
+        r")"
+        r"\s*"
+        r"(?:€|EUR|euros?)"
+        r"(?!\w)",
+        flags=re.IGNORECASE
+    )
 
-        r"(?<!\d)(\d{1,4}(?:[.,]\d{1,2})?)\s*€",
+    patron_euro_numero = re.compile(
+        r"(?:€|EUR|euros?)"
+        r"\s*"
+        r"(?:"
+        r"\d{1,3}(?:[.\s]\d{3})+"
+        r"(?:,\d{1,2})?"
+        r"|"
+        r"\d+(?:[.,]\d{1,2})?"
+        r")"
+        r"(?!\w)",
+        flags=re.IGNORECASE
+    )
 
-        r"€\s*(\d{1,4}(?:[.,]\d{1,2})?)",
+    palabras_consulta = [
 
-        r"(\d{1,4}(?:[.,]\d{1,2})?)\s*euros",
+        palabra
 
-        r"desde\s+(\d{1,4}(?:[.,]\d{1,2})?)",
+        for palabra in re.findall(
+            r"[a-z0-9áéíóúüñ]+",
+            quitar_acentos(
+                consulta.lower()
+            )
+        )
 
-        r"por\s+(\d{1,4}(?:[.,]\d{1,2})?)\s*€",
-
-        r"(\d{1,4}(?:[.,]\d{1,2})?)\s*EUR"
+        if len(palabra) >= 3
     ]
 
     encontrados = []
 
-    for texto in textos:
+    for indice, texto in enumerate(
+        textos
+    ):
 
-        for patron in patrones:
+        coincidencias = []
 
-            coincidencias = re.findall(
-                patron,
-                texto,
-                flags=re.IGNORECASE
+        coincidencias.extend(
+            patron_numero_euro.finditer(
+                texto
+            )
+        )
+
+        coincidencias.extend(
+            patron_euro_numero.finditer(
+                texto
+            )
+        )
+
+        texto_normalizado = quitar_acentos(
+            texto.lower()
+        )
+
+        coincidencias_consulta = sum(
+            1
+            for palabra in palabras_consulta
+            if palabra in texto_normalizado
+        )
+
+        for coincidencia in coincidencias:
+
+            bruto = (
+                coincidencia.group(0)
+                .strip()
             )
 
-            for coincidencia in coincidencias:
+            numero_original = re.sub(
+                r"(?i)euros?|EUR|€",
+                "",
+                bruto
+            ).strip()
 
-                valor = coincidencia.replace(
-                    ".",
-                    ""
+            try:
+
+                numero = normalizar_importe(
+                    numero_original
                 )
 
-                if "," in valor:
+            except Exception:
 
-                    partes = valor.split(",")
+                continue
 
-                    if len(partes) == 2:
+            if not (
+                1
+                <= numero
+                <= 10000
+            ):
 
-                        if len(partes[1]) <= 2:
+                continue
 
-                            valor = (
-                                partes[0]
-                                + "."
-                                + partes[1]
-                            )
+            relevancia = (
+                coincidencias_consulta
+                * 10
+            )
 
-                try:
+            if re.search(
+                r"\b(?:precio|precios|pvp|coste|costo|desde|plan|planes|mensual|mes)\b",
+                texto_normalizado
+            ):
 
-                    numero = float(
-                        valor
-                    )
+                relevancia += 5
 
-                except Exception:
+            encontrados.append({
 
-                    continue
+                "precio":
+                    numero,
 
-                if (
-                    numero >= 1
-                    and numero <= 10000
-                ):
+                "precio_original":
+                    numero_original,
 
-                    encontrados.append({
-                        "precio":
-                            numero,
+                "texto":
+                    texto,
 
-                        "texto":
-                            texto
-                    })
+                "indice":
+                    indice,
+
+                "relevancia":
+                    relevancia
+            })
 
     unicos = []
 
@@ -2907,20 +3493,150 @@ def extraer_precios_web(
                 item["precio"],
                 2
             ),
-            item["texto"]
+            item["texto"],
+            item["precio_original"]
         )
 
-        if clave not in vistos:
+        if clave in vistos:
+            continue
 
-            vistos.add(
-                clave
-            )
+        vistos.add(
+            clave
+        )
 
-            unicos.append(
-                item
-            )
+        unicos.append(
+            item
+        )
+
+    unicos.sort(
+        key=lambda x: (
+            -x["relevancia"],
+            x["indice"]
+        )
+    )
 
     return unicos
+
+
+def es_consulta_precio(
+    consulta
+):
+
+    normalizado = quitar_acentos(
+        consulta.lower()
+    )
+
+    patrones = [
+
+        r"\bprecio\b",
+
+        r"\bprecios\b",
+
+        r"\bcuanto cuesta\b",
+
+        r"\bcuanto vale\b",
+
+        r"\bcoste\b",
+
+        r"\bcosto\b"
+    ]
+
+    return any(
+        re.search(
+            patron,
+            normalizado
+        )
+        for patron in patrones
+    )
+
+
+def generar_consulta_web_precio(
+    consulta
+):
+
+    normalizada = quitar_acentos(
+        consulta.lower()
+    )
+
+    if (
+        "netflix"
+        in normalizada
+    ):
+
+        return (
+            "Netflix España planes precios mensual euros"
+        )
+
+    if (
+        re.search(
+            r"play\s*station\s*5",
+            normalizada
+        )
+        or
+        "ps5"
+        in normalizada
+    ):
+
+        return (
+            "PlayStation 5 España precio euros"
+        )
+
+    if (
+        "rtx"
+        in normalizada
+        or
+        "geforce"
+        in normalizada
+    ):
+
+        return (
+            consulta.strip()
+            + " España euros"
+        )
+
+    return (
+        consulta.strip()
+        + " España euros"
+    )
+
+
+def combinar_informacion_web(
+    original,
+    adicional
+):
+
+    if not original:
+        return adicional
+
+    if not adicional:
+        return original
+
+    bloques = []
+
+    for fuente in (
+        original,
+        adicional
+    ):
+
+        for bloque in re.split(
+            r"\n\s*\n",
+            fuente.strip()
+        ):
+
+            bloque = bloque.strip()
+
+            if (
+                bloque
+                and bloque not in bloques
+            ):
+
+                bloques.append(
+                    bloque
+                )
+
+    return "\n\n".join(
+        bloques[:10]
+    )
 
 
 def limpiar_texto_web(
@@ -2929,12 +3645,6 @@ def limpiar_texto_web(
 
     texto = re.sub(
         r"https?://\S+",
-        "",
-        texto
-    )
-
-    texto = re.sub(
-        r"//duckduckgo\.com/\S+",
         "",
         texto
     )
@@ -2949,7 +3659,8 @@ def limpiar_texto_web(
 
 
 def crear_resumen_web_fallback(
-    informacion
+    informacion,
+    consulta=""
 ):
 
     if not informacion:
@@ -2957,6 +3668,40 @@ def crear_resumen_web_fallback(
         return (
             "No he podido obtener "
             "información útil de Internet."
+        )
+
+    precios = extraer_precios_web(
+        informacion,
+        consulta
+    )
+
+    if precios:
+
+        mejor = precios[0]
+
+        precio_texto = (
+            mejor["precio_original"]
+            .strip()
+        )
+
+        texto_normalizado = quitar_acentos(
+            mejor["texto"].lower()
+        )
+
+        if (
+            "desde"
+            in texto_normalizado
+        ):
+
+            return (
+                f"He encontrado un precio "
+                f"desde aproximadamente "
+                f"{precio_texto} euros."
+            )
+
+        return (
+            f"He encontrado un precio de "
+            f"{precio_texto} euros."
         )
 
     textos = extraer_datos_relevantes_web(
@@ -2970,57 +3715,17 @@ def crear_resumen_web_fallback(
             "pero no he podido interpretarla."
         )
 
-    precios = extraer_precios_web(
-        informacion
-    )
-
-    if precios:
-
-        precios_ordenados = sorted(
-            precios,
-            key=lambda x: x["precio"]
-        )
-
-        mejor = precios_ordenados[0]
-
-        precio = mejor["precio"]
-
-        if float(precio).is_integer():
-
-            precio_texto = (
-                f"{int(precio)}"
-            )
-
-        else:
-
-            precio_texto = (
-                f"{precio:.2f}"
-                .replace(
-                    ".",
-                    ","
-                )
-            )
-
-        texto_fuente = (
-            mejor["texto"]
-        )
-
-        texto_fuente = limpiar_texto_web(
-            texto_fuente
-        )
+    if es_consulta_precio(
+        consulta
+    ):
 
         return (
-            f"He encontrado un precio "
-            f"desde aproximadamente "
-            f"{precio_texto} euros. "
-            f"El resultado indica: "
-            f"{texto_fuente}."
+            "No he encontrado un precio "
+            "concreto en los resultados."
         )
 
-    primero = textos[0]
-
     primero = limpiar_texto_web(
-        primero
+        textos[0]
     )
 
     if len(primero) > 350:
@@ -3076,6 +3781,83 @@ def preguntar_gemma_con_web(
     consulta,
     informacion
 ):
+
+    consulta = normalizar_consulta_busqueda(
+        consulta
+    )
+
+    es_precio = es_consulta_precio(
+        consulta
+    )
+
+    if es_precio:
+
+        print(
+            "💰 Consulta de precio detectada."
+        )
+
+        precios = extraer_precios_web(
+            informacion,
+            consulta
+        )
+
+        if not precios:
+
+            print(
+                "🔎 No se encontró un precio "
+                "claro. Haciendo una búsqueda "
+                "de refuerzo..."
+            )
+
+            consulta_refuerzo = (
+                generar_consulta_web_precio(
+                    consulta
+                )
+            )
+
+            if (
+                consulta_refuerzo.lower()
+                != consulta.lower()
+            ):
+
+                informacion_adicional = (
+                    buscar_internet(
+                        consulta_refuerzo
+                    )
+                )
+
+                if informacion_adicional:
+
+                    informacion = (
+                        combinar_informacion_web(
+                            informacion,
+                            informacion_adicional
+                        )
+                    )
+
+                    precios = extraer_precios_web(
+                        informacion,
+                        consulta
+                    )
+
+                    if precios:
+
+                        print(
+                            "💰 Precio encontrado "
+                            "tras la búsqueda de refuerzo."
+                        )
+
+        if precios:
+
+            print(
+                "🧾 Precio extraído directamente "
+                "de los resultados."
+            )
+
+            return crear_resumen_web_fallback(
+                informacion,
+                consulta
+            )
 
     prompt = (
         "Responde a la pregunta del usuario usando "
@@ -3252,7 +4034,8 @@ def preguntar_gemma_con_web(
         )
 
         return crear_resumen_web_fallback(
-            informacion
+            informacion,
+            consulta
         )
 
     except Exception as e:
@@ -3263,7 +4046,8 @@ def preguntar_gemma_con_web(
         )
 
         return crear_resumen_web_fallback(
-            informacion
+            informacion,
+            consulta
         )
 
 
@@ -4810,9 +5594,11 @@ def ejecutar_herramienta(
                 "qué buscar."
             )
 
-        consulta = str(
-            consulta
-        ).strip()
+        consulta = normalizar_consulta_busqueda(
+            str(
+                consulta
+            ).strip()
+        )
 
         informacion = buscar_internet(
             consulta
