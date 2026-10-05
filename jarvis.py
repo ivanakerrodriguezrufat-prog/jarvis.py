@@ -97,8 +97,7 @@ No inventes información.
 No afirmes haber realizado una acción que Python no haya
 realizado realmente.
 
-Si Python no ha abierto una aplicación, no digas que la has
-abierto.
+No muestres razonamiento interno.
 
 Cuando recibas información obtenida de Internet, úsala como
 fuente de información y responde directamente a la pregunta
@@ -2623,8 +2622,6 @@ def buscar_internet(
                 f"Resultado {i}\n"
                 f"Título: "
                 f"{resultado['titulo']}\n"
-                f"URL: "
-                f"{resultado['url']}\n"
                 f"Resumen: "
                 f"{resultado['snippet']}\n\n"
             )
@@ -2660,26 +2657,71 @@ def extraer_respuesta_gemma(
             .message
         )
 
-        contenido = (
-            getattr(
-                mensaje,
-                "content",
-                None
-            )
-            or ""
-        ).strip()
+        contenido = getattr(
+            mensaje,
+            "content",
+            None
+        )
 
-        if contenido:
-            return contenido
+        if isinstance(
+            contenido,
+            str
+        ):
 
-        razonamiento = (
-            getattr(
-                mensaje,
-                "reasoning_content",
-                None
-            )
-            or ""
-        ).strip()
+            contenido = contenido.strip()
+
+            if contenido:
+                return contenido
+
+        elif isinstance(
+            contenido,
+            list
+        ):
+
+            partes = []
+
+            for parte in contenido:
+
+                if isinstance(
+                    parte,
+                    dict
+                ):
+
+                    texto = parte.get(
+                        "text",
+                        ""
+                    )
+
+                    if texto:
+                        partes.append(
+                            str(texto)
+                        )
+
+                else:
+
+                    texto = getattr(
+                        parte,
+                        "text",
+                        None
+                    )
+
+                    if texto:
+                        partes.append(
+                            str(texto)
+                        )
+
+            contenido = " ".join(
+                partes
+            ).strip()
+
+            if contenido:
+                return contenido
+
+        razonamiento = getattr(
+            mensaje,
+            "reasoning_content",
+            None
+        )
 
         if razonamiento:
 
@@ -2700,6 +2742,335 @@ def extraer_respuesta_gemma(
         return ""
 
 
+def extraer_datos_relevantes_web(
+    informacion
+):
+
+    if not informacion:
+        return []
+
+    bloques = re.split(
+        r"\n\s*\n",
+        informacion.strip()
+    )
+
+    resultados = []
+
+    for bloque in bloques:
+
+        titulo = re.search(
+            r"Título:\s*(.+)",
+            bloque
+        )
+
+        resumen = re.search(
+            r"Resumen:\s*(.*)",
+            bloque
+        )
+
+        if not titulo:
+            continue
+
+        titulo_texto = (
+            titulo.group(1)
+            .strip()
+        )
+
+        resumen_texto = (
+            resumen.group(1)
+            .strip()
+            if resumen
+            else ""
+        )
+
+        texto = (
+            titulo_texto
+            + " "
+            + resumen_texto
+        )
+
+        texto = re.sub(
+            r"https?://\S+",
+            "",
+            texto
+        )
+
+        texto = re.sub(
+            r"//duckduckgo\.com/\S+",
+            "",
+            texto
+        )
+
+        texto = re.sub(
+            r"\s+",
+            " ",
+            texto
+        ).strip()
+
+        resultados.append(
+            texto
+        )
+
+    return resultados
+
+
+def extraer_precios_web(
+    informacion
+):
+
+    textos = extraer_datos_relevantes_web(
+        informacion
+    )
+
+    if not textos:
+        return []
+
+    patrones = [
+
+        r"(?<!\d)(\d{1,4}(?:[.,]\d{1,2})?)\s*€",
+
+        r"€\s*(\d{1,4}(?:[.,]\d{1,2})?)",
+
+        r"(\d{1,4}(?:[.,]\d{1,2})?)\s*euros",
+
+        r"desde\s+(\d{1,4}(?:[.,]\d{1,2})?)",
+
+        r"por\s+(\d{1,4}(?:[.,]\d{1,2})?)\s*€",
+
+        r"(\d{1,4}(?:[.,]\d{1,2})?)\s*EUR"
+    ]
+
+    encontrados = []
+
+    for texto in textos:
+
+        for patron in patrones:
+
+            coincidencias = re.findall(
+                patron,
+                texto,
+                flags=re.IGNORECASE
+            )
+
+            for coincidencia in coincidencias:
+
+                valor = coincidencia.replace(
+                    ".",
+                    ""
+                )
+
+                if "," in valor:
+
+                    partes = valor.split(",")
+
+                    if len(partes) == 2:
+
+                        if len(partes[1]) <= 2:
+
+                            valor = (
+                                partes[0]
+                                + "."
+                                + partes[1]
+                            )
+
+                try:
+
+                    numero = float(
+                        valor
+                    )
+
+                except Exception:
+
+                    continue
+
+                if (
+                    numero >= 1
+                    and numero <= 10000
+                ):
+
+                    encontrados.append({
+                        "precio":
+                            numero,
+
+                        "texto":
+                            texto
+                    })
+
+    unicos = []
+
+    vistos = set()
+
+    for item in encontrados:
+
+        clave = (
+            round(
+                item["precio"],
+                2
+            ),
+            item["texto"]
+        )
+
+        if clave not in vistos:
+
+            vistos.add(
+                clave
+            )
+
+            unicos.append(
+                item
+            )
+
+    return unicos
+
+
+def limpiar_texto_web(
+    texto
+):
+
+    texto = re.sub(
+        r"https?://\S+",
+        "",
+        texto
+    )
+
+    texto = re.sub(
+        r"//duckduckgo\.com/\S+",
+        "",
+        texto
+    )
+
+    texto = re.sub(
+        r"\s+",
+        " ",
+        texto
+    ).strip()
+
+    return texto
+
+
+def crear_resumen_web_fallback(
+    informacion
+):
+
+    if not informacion:
+
+        return (
+            "No he podido obtener "
+            "información útil de Internet."
+        )
+
+    textos = extraer_datos_relevantes_web(
+        informacion
+    )
+
+    if not textos:
+
+        return (
+            "He encontrado información en Internet, "
+            "pero no he podido interpretarla."
+        )
+
+    precios = extraer_precios_web(
+        informacion
+    )
+
+    if precios:
+
+        precios_ordenados = sorted(
+            precios,
+            key=lambda x: x["precio"]
+        )
+
+        mejor = precios_ordenados[0]
+
+        precio = mejor["precio"]
+
+        if float(precio).is_integer():
+
+            precio_texto = (
+                f"{int(precio)}"
+            )
+
+        else:
+
+            precio_texto = (
+                f"{precio:.2f}"
+                .replace(
+                    ".",
+                    ","
+                )
+            )
+
+        texto_fuente = (
+            mejor["texto"]
+        )
+
+        texto_fuente = limpiar_texto_web(
+            texto_fuente
+        )
+
+        return (
+            f"He encontrado un precio "
+            f"desde aproximadamente "
+            f"{precio_texto} euros. "
+            f"El resultado indica: "
+            f"{texto_fuente}."
+        )
+
+    primero = textos[0]
+
+    primero = limpiar_texto_web(
+        primero
+    )
+
+    if len(primero) > 350:
+
+        primero = (
+            primero[:350]
+            .rsplit(
+                " ",
+                1
+            )[0]
+            + "."
+        )
+
+    return (
+        "He encontrado esta información: "
+        + primero
+    )
+
+
+def respuesta_web_es_generica(
+    texto
+):
+
+    if not texto:
+        return True
+
+    normalizado = quitar_acentos(
+        texto.lower()
+    )
+
+    frases_genericas = [
+
+        "varia segun la tienda",
+        "varia segun las ofertas",
+        "depende de la tienda",
+        "depende de las ofertas",
+        "puede variar segun",
+        "los precios pueden variar",
+        "el precio puede variar",
+        "depende del modelo"
+    ]
+
+    for frase in frases_genericas:
+
+        if frase in normalizado:
+            return True
+
+    return False
+
+
 def preguntar_gemma_con_web(
     pregunta,
     consulta,
@@ -2707,20 +3078,28 @@ def preguntar_gemma_con_web(
 ):
 
     prompt = (
-        "Responde en español a la pregunta del usuario.\n"
-        "Sé breve y directo.\n"
-        "Usa los resultados de Internet como información.\n"
-        "No expliques tu razonamiento.\n"
-        "Devuelve únicamente la respuesta final que "
-        "debe escuchar el usuario.\n"
-        "No inventes datos.\n\n"
+        "Responde a la pregunta del usuario usando "
+        "los resultados de Internet.\n\n"
+        "IMPORTANTE:\n"
+        "Debes dar una respuesta concreta siempre "
+        "que los resultados permitan hacerlo.\n"
+        "Si preguntan por un precio y aparece un precio "
+        "en los resultados, dilo.\n"
+        "Si aparecen varios precios, puedes indicar "
+        "el precio más bajo encontrado y aclarar "
+        "que depende del modelo o tienda.\n"
+        "No respondas únicamente que depende de la tienda "
+        "si los resultados contienen precios concretos.\n"
+        "No inventes precios.\n"
+        "No muestres URLs.\n"
+        "No muestres razonamiento interno.\n"
+        "No expliques el proceso de búsqueda.\n"
+        "Responde únicamente con la respuesta final.\n"
+        "Sé breve y natural.\n\n"
         "Pregunta:\n"
         + pregunta
         + "\n\n"
-        "Consulta realizada:\n"
-        + consulta
-        + "\n\n"
-        "Resultados de Internet:\n"
+        "Resultados:\n"
         + informacion
     )
 
@@ -2742,8 +3121,9 @@ def preguntar_gemma_con_web(
 
                     "content":
                         "Eres Jarvis. "
-                        "Responde solamente con la "
-                        "respuesta final en español. "
+                        "Debes responder en español "
+                        "con datos concretos de los "
+                        "resultados proporcionados. "
                         "No muestres razonamiento."
                 },
 
@@ -2756,8 +3136,8 @@ def preguntar_gemma_con_web(
                 }
             ],
 
-            temperature=0.4,
-            max_tokens=300
+            temperature=0.1,
+            max_tokens=250
         )
 
         texto = extraer_respuesta_gemma(
@@ -2769,24 +3149,49 @@ def preguntar_gemma_con_web(
             + repr(texto[:300])
         )
 
-        if texto:
+        if (
+            texto
+            and not respuesta_web_es_generica(
+                texto
+            )
+        ):
+
             return texto
 
-        print(
-            "⚠️ Gemma web devolvió vacío. "
-            "Haciendo segundo intento..."
-        )
+        if texto:
 
-        prompt_simple = (
+            print(
+                "⚠️ Gemma respondió de forma "
+                "demasiado genérica. "
+                "Intentando obtener una respuesta concreta..."
+            )
 
+        else:
+
+            print(
+                "⚠️ Gemma web devolvió vacío. "
+                "Haciendo segundo intento..."
+            )
+
+        prompt_directo = (
+            "Contesta esta pregunta usando "
+            "ÚNICAMENTE los datos de los resultados.\n\n"
             "Pregunta: "
             + pregunta
             + "\n\n"
-            "Resultados encontrados:\n"
+            "Resultados:\n"
             + informacion
             + "\n\n"
-            "Da una respuesta final breve en español. "
-            "No muestres razonamiento."
+            "Si hay un precio concreto en los resultados, "
+            "dime ese precio.\n"
+            "Si hay varios precios, dime el más bajo "
+            "que aparezca y aclara que es el precio "
+            "más bajo encontrado.\n"
+            "Si no hay ningún precio, dilo claramente.\n"
+            "No inventes.\n"
+            "No muestres URLs.\n"
+            "No muestres razonamiento.\n"
+            "Responde en una sola frase."
         )
 
         respuesta = client.chat.completions.create(
@@ -2800,8 +3205,9 @@ def preguntar_gemma_con_web(
                         "system",
 
                     "content":
-                        "Responde únicamente con "
-                        "la respuesta final."
+                        "Extrae el dato concreto "
+                        "que pide el usuario. "
+                        "No hagas razonamiento visible."
                 },
 
                 {
@@ -2809,12 +3215,12 @@ def preguntar_gemma_con_web(
                         "user",
 
                     "content":
-                        prompt_simple
+                        prompt_directo
                 }
             ],
 
-            temperature=0.7,
-            max_tokens=300
+            temperature=0,
+            max_tokens=150
         )
 
         texto = extraer_respuesta_gemma(
@@ -2826,55 +3232,27 @@ def preguntar_gemma_con_web(
             + repr(texto[:300])
         )
 
-        if texto:
+        if (
+            texto
+            and not respuesta_web_es_generica(
+                texto
+            )
+        ):
+
             return texto
 
         print(
-            "⚠️ Segundo intento vacío. "
-            "Haciendo tercer intento..."
-        )
-
-        respuesta = client.chat.completions.create(
-
-            model=GEMMA_MODEL,
-
-            messages=[
-
-                {
-                    "role":
-                        "user",
-
-                    "content":
-                        "Contesta brevemente en español "
-                        "esta pregunta usando los datos "
-                        "que aparecen debajo. "
-                        "Escribe solamente la respuesta final.\n\n"
-                        + pregunta
-                        + "\n\n"
-                        + informacion
-                }
-            ],
-
-            temperature=0.8,
-            max_tokens=300
-        )
-
-        texto = extraer_respuesta_gemma(
-            respuesta
+            "⚠️ Gemma no ha generado una "
+            "respuesta suficientemente concreta."
         )
 
         print(
-            "🔍 Tercer intento Gemma: "
-            + repr(texto[:300])
+            "🧾 Extrayendo datos directamente "
+            "de los resultados..."
         )
 
-        if texto:
-            return texto
-
-        return (
-            "He encontrado los resultados, "
-            "pero Gemma no ha generado "
-            "una respuesta final."
+        return crear_resumen_web_fallback(
+            informacion
         )
 
     except Exception as e:
@@ -2884,10 +3262,8 @@ def preguntar_gemma_con_web(
             f"{repr(e)}"
         )
 
-        return (
-            "He encontrado resultados, "
-            "pero ha ocurrido un error "
-            "al interpretarlos."
+        return crear_resumen_web_fallback(
+            informacion
         )
 
 
@@ -3012,7 +3388,7 @@ def ejecutar_busqueda_web(
 
 
 # ============================================================
-# CONTROL DE WINDOWS
+# CONTROL DE VOLUMEN
 # ============================================================
 
 def obtener_control_volumen():
@@ -3028,8 +3404,6 @@ def obtener_control_volumen():
 
         dispositivos = AudioUtilities.GetSpeakers()
 
-        # Versiones recientes de pycaw pueden devolver
-        # directamente un objeto AudioDevice.
         interfaz_directa = getattr(
             dispositivos,
             "EndpointVolume",
@@ -3039,7 +3413,6 @@ def obtener_control_volumen():
         if interfaz_directa is not None:
             return interfaz_directa
 
-        # Compatibilidad con versiones antiguas.
         activar = getattr(
             dispositivos,
             "Activate",
@@ -3061,8 +3434,6 @@ def obtener_control_volumen():
                 )
             )
 
-        # Algunas versiones guardan el dispositivo COM
-        # real dentro de _dev.
         dispositivo_real = getattr(
             dispositivos,
             "_dev",
@@ -3381,7 +3752,7 @@ def silenciar_volumen():
 
 
 # ============================================================
-# NÚMEROS PARA VOLUMEN
+# NÚMEROS
 # ============================================================
 
 UNIDADES_NUMERO = {
@@ -3638,7 +4009,7 @@ def parece_comando_volumen(texto):
 
 
 # ============================================================
-# CONTROL WINDOWS: RESTO
+# WINDOWS
 # ============================================================
 
 def bloquear_pc():
@@ -3958,7 +4329,7 @@ def extraer_objetivo_cierre(
 
 
 # ============================================================
-# HERRAMIENTAS PARA GEMMA
+# HERRAMIENTAS
 # ============================================================
 
 HERRAMIENTAS_JARVIS = {
@@ -4043,7 +4414,7 @@ HERRAMIENTAS_JARVIS = {
 
     "abrir": {
         "descripcion":
-            "Abre una aplicación, sitio web, URL o archivo mediante las funciones permitidas de Jarvis.",
+            "Abre una aplicación, sitio web, URL o archivo.",
         "argumentos": {
             "objetivo":
                 "nombre de aplicación, sitio web, URL o ruta"
@@ -4146,7 +4517,6 @@ def decidir_herramienta(
         "del usuario necesitas ejecutar una herramienta de Jarvis.\n\n"
         "Solo puedes elegir una herramienta de la lista proporcionada.\n"
         "No inventes herramientas.\n"
-        "No ejecutes comandos de Windows directamente.\n"
         "Si ninguna herramienta es necesaria, devuelve exactamente:\n"
         '{"tool":null,"args":{}}\n\n'
         "Si una herramienta es necesaria, devuelve únicamente "
@@ -4440,8 +4810,12 @@ def ejecutar_herramienta(
                 "qué buscar."
             )
 
+        consulta = str(
+            consulta
+        ).strip()
+
         informacion = buscar_internet(
-            str(consulta)
+            consulta
         )
 
         if not informacion:
@@ -4451,7 +4825,11 @@ def ejecutar_herramienta(
                 "resultados de Internet."
             )
 
-        return informacion
+        return preguntar_gemma_con_web(
+            consulta,
+            consulta,
+            informacion
+        )
 
     return None
 
@@ -4462,23 +4840,25 @@ def responder_con_herramienta(
     resultado
 ):
 
+    if herramienta == "buscar_internet":
+
+        return str(
+            resultado
+        )
+
     prompt = (
         "Responde en español a la petición del usuario.\n"
         "La herramienta de Jarvis ya se ha ejecutado.\n"
         "Usa exclusivamente el resultado proporcionado "
         "para los datos que dependan de la herramienta.\n"
         "No inventes información.\n"
-        "No digas que has ejecutado Python ni hables "
-        "de herramientas internas.\n"
+        "No hables de herramientas internas.\n"
         "Sé breve, directo y natural.\n"
-        "Devuelve solamente la respuesta final para el usuario.\n\n"
-        "Petición del usuario:\n"
+        "Devuelve solamente la respuesta final.\n\n"
+        "Petición:\n"
         + pregunta
         + "\n\n"
-        "Herramienta utilizada:\n"
-        + herramienta
-        + "\n\n"
-        "Resultado real de Python:\n"
+        "Resultado real:\n"
         + str(resultado)
     )
 
@@ -4521,8 +4901,7 @@ def responder_con_herramienta(
     except Exception as e:
 
         print(
-            f"⚠️ Error generando respuesta "
-            f"después de herramienta: "
+            f"⚠️ Error generando respuesta: "
             f"{repr(e)}"
         )
 
@@ -4581,10 +4960,6 @@ def ejecutar_comando_directo(
         texto.lower().strip()
     )
 
-    # --------------------------------------------------------
-    # CANCELACIÓN GENERAL
-    # --------------------------------------------------------
-
     cancelaciones = {
         "para",
         "parar",
@@ -4625,19 +5000,11 @@ def ejecutar_comando_directo(
                 "Acción cancelada."
             )
 
-    # --------------------------------------------------------
-    # CONFIRMACIÓN
-    # --------------------------------------------------------
-
     if confirmacion_pendiente:
 
         return procesar_confirmacion(
             texto
         )
-
-    # --------------------------------------------------------
-    # CIUDAD PENDIENTE PARA CLIMA
-    # --------------------------------------------------------
 
     if esperando_ciudad_clima:
 
@@ -4659,10 +5026,6 @@ def ejecutar_comando_directo(
         return obtener_tiempo(
             ciudad
         )
-
-    # --------------------------------------------------------
-    # BLOQUEO
-    # --------------------------------------------------------
 
     if (
         "bloquea el pc"
@@ -4691,28 +5054,8 @@ def ejecutar_comando_directo(
             "No he podido bloquear el PC."
         )
 
-    # --------------------------------------------------------
-    # VOLUMEN
-    # --------------------------------------------------------
-
     texto_volumen = quitar_acentos(
         texto_limpio
-    )
-
-    texto_volumen = re.sub(
-        r"\bbaja\b",
-        "baja",
-        texto_volumen
-    )
-
-    texto_volumen = texto_volumen.replace(
-        "baja volumen",
-        "baja el volumen"
-    )
-
-    texto_volumen = texto_volumen.replace(
-        "sube volumen",
-        "sube el volumen"
     )
 
     porcentaje = extraer_porcentaje_volumen(
@@ -4736,9 +5079,7 @@ def ejecutar_comando_directo(
             )
 
         return (
-            "No he podido establecer el volumen "
-            "exactamente. Comprueba que pycaw "
-            "esté instalado."
+            "No he podido establecer el volumen."
         )
 
     if (
@@ -4802,12 +5143,6 @@ def ejecutar_comando_directo(
         "habilitar el volumen"
         in texto_volumen
         or
-        "habilita volumen"
-        in texto_volumen
-        or
-        "habilitar volumen"
-        in texto_volumen
-        or
         "desmutea el volumen"
         in texto_volumen
         or
@@ -4867,10 +5202,6 @@ def ejecutar_comando_directo(
             "No he podido silenciar el volumen."
         )
 
-    # --------------------------------------------------------
-    # APAGAR / REINICIAR
-    # --------------------------------------------------------
-
     if (
         "apaga el pc"
         in texto_limpio
@@ -4919,10 +5250,6 @@ def ejecutar_comando_directo(
             "reiniciar"
         )
 
-    # --------------------------------------------------------
-    # CERRAR
-    # --------------------------------------------------------
-
     objetivo_cierre = extraer_objetivo_cierre(
         texto
     )
@@ -4932,10 +5259,6 @@ def ejecutar_comando_directo(
         return solicitar_confirmacion(
             "cerrar:" + objetivo_cierre
         )
-
-    # --------------------------------------------------------
-    # ABRIR
-    # --------------------------------------------------------
 
     objetivo = extraer_objetivo_apertura(
         texto
@@ -4961,10 +5284,6 @@ def ejecutar_comando_directo(
             f"o sitio llamado {objetivo}."
         )
 
-    # --------------------------------------------------------
-    # BÚSQUEDA
-    # --------------------------------------------------------
-
     if extraer_consulta_busqueda(
         texto
     ):
@@ -4972,10 +5291,6 @@ def ejecutar_comando_directo(
         return ejecutar_busqueda_web(
             texto
         )
-
-    # --------------------------------------------------------
-    # HORA
-    # --------------------------------------------------------
 
     if (
         "qué hora es"
@@ -4989,15 +5304,6 @@ def ejecutar_comando_directo(
     ):
 
         return obtener_hora()
-
-    # --------------------------------------------------------
-    # HARDWARE
-    #
-    # IMPORTANTE:
-    # Se comprueba ANTES del clima para que preguntas como
-    # "qué temperatura tiene la gráfica" no se interpreten
-    # como una consulta meteorológica.
-    # --------------------------------------------------------
 
     if (
         "estado del pc"
@@ -5071,10 +5377,6 @@ def ejecutar_comando_directo(
     ):
 
         return estado_gpu()
-
-    # --------------------------------------------------------
-    # CLIMA
-    # --------------------------------------------------------
 
     if (
         "tiempo"
@@ -5241,10 +5543,6 @@ def procesar_orden():
         texto.lower().strip()
     )
 
-    # --------------------------------------------------------
-    # CONFIRMACIÓN
-    # --------------------------------------------------------
-
     if confirmacion_pendiente:
 
         resultado = ejecutar_comando_directo(
@@ -5267,10 +5565,6 @@ def procesar_orden():
                 )
 
         return "continuar"
-
-    # --------------------------------------------------------
-    # APRENDIZAJE
-    # --------------------------------------------------------
 
     orden_aprendizaje = (
         extraer_orden_aprendizaje(
@@ -5316,10 +5610,6 @@ def procesar_orden():
 
         return "continuar"
 
-    # --------------------------------------------------------
-    # APLICAR APRENDIZAJE
-    # --------------------------------------------------------
-
     texto = aplicar_aprendizaje(
         texto
     )
@@ -5327,10 +5617,6 @@ def procesar_orden():
     texto_limpio = (
         texto.lower().strip()
     )
-
-    # --------------------------------------------------------
-    # SALIR
-    # --------------------------------------------------------
 
     if (
         texto_limpio == "salir"
@@ -5375,10 +5661,6 @@ def procesar_orden():
 
         return "esperar"
 
-    # --------------------------------------------------------
-    # DIRECTOS
-    # --------------------------------------------------------
-
     resultado = ejecutar_comando_directo(
         texto
     )
@@ -5400,10 +5682,6 @@ def procesar_orden():
         )
 
         return "continuar"
-
-    # --------------------------------------------------------
-    # ROUTER DE HERRAMIENTAS
-    # --------------------------------------------------------
 
     respuesta_herramienta = (
         ejecutar_router_herramientas(
@@ -5443,10 +5721,6 @@ def procesar_orden():
         )
 
         return "continuar"
-
-    # --------------------------------------------------------
-    # GEMMA NORMAL
-    # --------------------------------------------------------
 
     respuesta = preguntar_gemma(
         texto
