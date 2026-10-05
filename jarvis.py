@@ -125,7 +125,6 @@ escuchando_para = threading.Event()
 
 esperando_ciudad_clima = False
 
-# Confirmación para acciones sensibles
 confirmacion_pendiente = None
 
 
@@ -238,18 +237,34 @@ memoria = cargar_memoria()
 
 def cargar_aprendizaje():
 
-    if not os.path.exists(APRENDIZAJE_FILE):
+    if not os.path.exists(
+        APRENDIZAJE_FILE
+    ):
         return {}
 
     try:
-        with open(APRENDIZAJE_FILE, "r", encoding="utf-8") as archivo:
-            datos = json.load(archivo)
 
-        if isinstance(datos, dict):
+        with open(
+            APRENDIZAJE_FILE,
+            "r",
+            encoding="utf-8"
+        ) as archivo:
+
+            datos = json.load(
+                archivo
+            )
+
+        if isinstance(
+            datos,
+            dict
+        ):
             return datos
 
     except Exception as e:
-        print(f"⚠️ Error cargando aprendizaje: {e}")
+
+        print(
+            f"⚠️ Error cargando aprendizaje: {e}"
+        )
 
     return {}
 
@@ -259,49 +274,101 @@ aprendizaje = cargar_aprendizaje()
 
 def normalizar_aprendizaje(texto):
 
-    texto = quitar_acentos(texto.lower()) if "quitar_acentos" in globals() else texto.lower()
-    texto = re.sub(r"[^a-z0-9áéíóúüñ\s]", " ", texto)
-    texto = re.sub(r"\s+", " ", texto).strip()
+    texto = (
+        quitar_acentos(texto.lower())
+        if "quitar_acentos" in globals()
+        else texto.lower()
+    )
+
+    texto = re.sub(
+        r"[^a-z0-9áéíóúüñ\s]",
+        " ",
+        texto
+    )
+
+    texto = re.sub(
+        r"\s+",
+        " ",
+        texto
+    ).strip()
+
     return texto
 
 
 def guardar_aprendizaje():
 
     try:
-        with open(APRENDIZAJE_FILE, "w", encoding="utf-8") as archivo:
-            json.dump(aprendizaje, archivo, ensure_ascii=False, indent=2)
+
+        with open(
+            APRENDIZAJE_FILE,
+            "w",
+            encoding="utf-8"
+        ) as archivo:
+
+            json.dump(
+                aprendizaje,
+                archivo,
+                ensure_ascii=False,
+                indent=2
+            )
+
     except Exception as e:
-        print(f"⚠️ Error guardando aprendizaje: {e}")
+
+        print(
+            f"⚠️ Error guardando aprendizaje: {e}"
+        )
 
 
-def aprender_comando(frase, comando):
+def aprender_comando(
+    frase,
+    comando
+):
 
-    frase = normalizar_aprendizaje(frase)
+    frase = normalizar_aprendizaje(
+        frase
+    )
+
     comando = comando.strip()
 
-    if not frase or not comando or len(frase) < 2:
+    if (
+        not frase
+        or not comando
+        or len(frase) < 2
+    ):
         return False
 
     aprendizaje[frase] = comando
+
     guardar_aprendizaje()
-    print(f"🧠 Aprendido: {frase!r} → {comando!r}")
+
+    print(
+        f"🧠 Aprendido: "
+        f"{frase!r} → {comando!r}"
+    )
+
     return True
 
 
 def aplicar_aprendizaje(texto):
 
-    clave = normalizar_aprendizaje(texto)
+    clave = normalizar_aprendizaje(
+        texto
+    )
 
     if not clave:
         return texto
 
-    comando = aprendizaje.get(clave)
+    comando = aprendizaje.get(
+        clave
+    )
 
     if comando:
+
         print(
             f"🧠 Aprendizaje aplicado: "
             f"{clave!r} → {comando!r}"
         )
+
         return comando
 
     texto_sin_cortesia = re.sub(
@@ -310,6 +377,7 @@ def aplicar_aprendizaje(texto):
         clave,
         flags=re.IGNORECASE
     )
+
     texto_sin_cortesia = re.sub(
         r"\s+",
         " ",
@@ -321,10 +389,12 @@ def aplicar_aprendizaje(texto):
     )
 
     if comando:
+
         print(
             f"🧠 Aprendizaje aplicado: "
             f"{texto_sin_cortesia!r} → {comando!r}"
         )
+
         return comando
 
     return texto
@@ -332,25 +402,41 @@ def aplicar_aprendizaje(texto):
 
 def extraer_orden_aprendizaje(texto):
 
-    limpio = texto.strip(" .?!")
+    limpio = texto.strip(
+        " .?!"
+    )
 
     patrones = [
+
         r"aprende que (.+?) significa que (.+)",
+
         r"aprende que (.+?) significa (.+)",
+
         r"aprende que (.+?) quiere decir que (.+)",
+
         r"aprende que (.+?) quiere decir (.+)",
+
         r"aprende que (.+?) es (.+)",
+
         r"cuando diga (.+?) significa que (.+)",
+
         r"cuando diga (.+?) significa (.+)",
+
         r"cuando te diga (.+?) significa que (.+)",
+
         r"cuando te diga (.+?) significa (.+)",
+
         r"cuando diga (.+?),? haz (.+)",
+
         r"cuando te diga (.+?),? haz (.+)",
+
         r"si digo (.+?),? haz (.+)",
+
         r"si te digo (.+?),? haz (.+)"
     ]
 
     for patron in patrones:
+
         coincidencia = re.fullmatch(
             patron,
             limpio,
@@ -358,8 +444,18 @@ def extraer_orden_aprendizaje(texto):
         )
 
         if coincidencia:
-            frase = coincidencia.group(1).strip(" .?!\"'")
-            comando = coincidencia.group(2).strip(" .?!\"'")
+
+            frase = coincidencia.group(
+                1
+            ).strip(
+                " .?!\"'"
+            )
+
+            comando = coincidencia.group(
+                2
+            ).strip(
+                " .?!\"'"
+            )
 
             comando = re.sub(
                 r"^(que\s+|quiero\s+que\s+|quiero\s+|debes\s+|deberás\s+|deberas\s+|tienes\s+que\s+|tendrás\s+que\s+)",
@@ -374,18 +470,21 @@ def extraer_orden_aprendizaje(texto):
                 comando,
                 flags=re.IGNORECASE
             )
+
             comando = re.sub(
                 r"^abres\s+",
                 "abre ",
                 comando,
                 flags=re.IGNORECASE
             )
+
             comando = re.sub(
                 r"^habras\s+",
                 "abre ",
                 comando,
                 flags=re.IGNORECASE
             )
+
             comando = re.sub(
                 r"^abrir\s+",
                 "abre ",
@@ -542,7 +641,10 @@ def corregir_terminos(texto):
         "packet trace": "Cisco Packet Tracer",
 
         "libre office": "LibreOffice",
-        "libreofice": "LibreOffice"
+        "libreofice": "LibreOffice",
+
+        "rtg5070": "RTX 5070",
+        "rtx5070": "RTX 5070"
     }
 
     for incorrecto, correcto in correcciones.items():
@@ -574,8 +676,11 @@ def corregir_terminos(texto):
         "desabilita": "deshabilita",
         "desabilitar": "deshabilitar",
 
-        "silencia de volumen": "silencia el volumen",
-        "silencia volumen": "silencia el volumen"
+        "silencia de volumen":
+            "silencia el volumen",
+
+        "silencia volumen":
+            "silencia el volumen"
     }
 
     for incorrecto, correcto in correcciones_volumen.items():
@@ -701,14 +806,18 @@ def escuchar_para():
                     for segmento in segmentos
                 ).lower()
 
+                palabras_parar = [
+                    "para",
+                    "parar",
+                    "párate",
+                    "parate",
+                    "cancela",
+                    "cancelar"
+                ]
+
                 if any(
                     palabra in texto
-                    for palabra in [
-                        "para",
-                        "parar",
-                        "párate",
-                        "parate"
-                    ]
+                    for palabra in palabras_parar
                 ):
 
                     interrumpir_voz.set()
@@ -978,7 +1087,6 @@ def es_jarvis(texto):
         not palabras
         or len(palabras) > 2
     ):
-
         return False
 
     variantes = [
@@ -1806,19 +1914,15 @@ def buscar_aplicacion_windows(nombre):
         b = nombre.lower()
 
         if a == b:
-
             return app
 
         if b in a:
-
             puntuacion = 0.95
 
         elif a in b:
-
             puntuacion = 0.90
 
         else:
-
             puntuacion = difflib.SequenceMatcher(
                 None,
                 a,
@@ -1920,19 +2024,15 @@ $resultados | ConvertTo-Json -Compress
             a = display_name.lower()
 
             if a == nombre:
-
                 puntuacion = 1.0
 
             elif nombre in a:
-
                 puntuacion = 0.95
 
             elif a in nombre:
-
                 puntuacion = 0.90
 
             else:
-
                 puntuacion = difflib.SequenceMatcher(
                     None,
                     a,
@@ -2928,18 +3028,71 @@ def obtener_control_volumen():
 
         dispositivos = AudioUtilities.GetSpeakers()
 
-        interfaz = dispositivos.Activate(
-            IAudioEndpointVolume._iid_,
-            CLSCTX_ALL,
+        # Versiones recientes de pycaw pueden devolver
+        # directamente un objeto AudioDevice.
+        interfaz_directa = getattr(
+            dispositivos,
+            "EndpointVolume",
             None
         )
 
-        volumen = cast(
-            interfaz,
-            POINTER(IAudioEndpointVolume)
+        if interfaz_directa is not None:
+            return interfaz_directa
+
+        # Compatibilidad con versiones antiguas.
+        activar = getattr(
+            dispositivos,
+            "Activate",
+            None
         )
 
-        return volumen
+        if activar is not None:
+
+            interfaz = activar(
+                IAudioEndpointVolume._iid_,
+                CLSCTX_ALL,
+                None
+            )
+
+            return cast(
+                interfaz,
+                POINTER(
+                    IAudioEndpointVolume
+                )
+            )
+
+        # Algunas versiones guardan el dispositivo COM
+        # real dentro de _dev.
+        dispositivo_real = getattr(
+            dispositivos,
+            "_dev",
+            None
+        )
+
+        activar = getattr(
+            dispositivo_real,
+            "Activate",
+            None
+        )
+
+        if activar is not None:
+
+            interfaz = activar(
+                IAudioEndpointVolume._iid_,
+                CLSCTX_ALL,
+                None
+            )
+
+            return cast(
+                interfaz,
+                POINTER(
+                    IAudioEndpointVolume
+                )
+            )
+
+        raise AttributeError(
+            "No se encontró una interfaz de volumen compatible."
+        )
 
     except Exception as e:
 
@@ -2951,11 +3104,15 @@ def obtener_control_volumen():
         return None
 
 
-def establecer_volumen_porcentaje(porcentaje):
+def establecer_volumen_porcentaje(
+    porcentaje
+):
 
     try:
 
-        porcentaje = float(porcentaje)
+        porcentaje = float(
+            porcentaje
+        )
 
         porcentaje = max(
             0,
@@ -2978,10 +3135,12 @@ def establecer_volumen_porcentaje(porcentaje):
         if porcentaje > 0:
 
             try:
+
                 volumen.SetMute(
                     0,
                     None
                 )
+
             except Exception:
                 pass
 
@@ -3226,6 +3385,7 @@ def silenciar_volumen():
 # ============================================================
 
 UNIDADES_NUMERO = {
+
     "cero": 0,
     "uno": 1,
     "un": 1,
@@ -3241,6 +3401,7 @@ UNIDADES_NUMERO = {
 }
 
 DECENAS_NUMERO = {
+
     "diez": 10,
     "once": 11,
     "doce": 12,
@@ -3263,6 +3424,7 @@ DECENAS_NUMERO = {
 }
 
 NUMEROS_DIRECTOS = {
+
     **UNIDADES_NUMERO,
     **DECENAS_NUMERO,
 
@@ -3349,7 +3511,9 @@ def extraer_porcentaje_volumen(texto):
         r"\b(?:al|a|en)\s+"
         r"("
         + "|".join(
-            re.escape(quitar_acentos(nombre))
+            re.escape(
+                quitar_acentos(nombre)
+            )
             for nombre in nombres
         )
         + r")"
@@ -3439,17 +3603,18 @@ def parece_comando_volumen(texto):
 
     palabras_volumen = [
         "volumen",
-        "bolumen",
-        "volúmen"
+        "bolumen"
     ]
 
     if any(
         palabra in texto_normalizado
         for palabra in palabras_volumen
     ):
+
         return True
 
     variantes = [
+
         "sube",
         "subir",
         "baja",
@@ -3578,7 +3743,9 @@ def cerrar_aplicacion(nombre):
     return cerrado
 
 
-def solicitar_confirmacion(accion):
+def solicitar_confirmacion(
+    accion
+):
 
     global confirmacion_pendiente
 
@@ -3596,7 +3763,9 @@ def solicitar_confirmacion(accion):
             "¿Confirmas que quieres reiniciar el PC?"
         )
 
-    if accion.startswith("cerrar:"):
+    if accion.startswith(
+        "cerrar:"
+    ):
 
         nombre = accion.split(
             ":",
@@ -3612,7 +3781,9 @@ def solicitar_confirmacion(accion):
     return None
 
 
-def procesar_confirmacion(texto):
+def procesar_confirmacion(
+    texto
+):
 
     global confirmacion_pendiente
 
@@ -3638,6 +3809,7 @@ def procesar_confirmacion(texto):
     ).strip()
 
     afirmativas = {
+
         "si",
         "confirmo",
         "confirmado",
@@ -3655,6 +3827,7 @@ def procesar_confirmacion(texto):
     }
 
     negativas = {
+
         "no",
         "cancela",
         "cancelar",
@@ -3677,7 +3850,9 @@ def procesar_confirmacion(texto):
                 "De acuerdo. Apagando el PC."
             )
 
-            time.sleep(0.5)
+            time.sleep(
+                0.5
+            )
 
             subprocess.Popen(
                 [
@@ -3696,7 +3871,9 @@ def procesar_confirmacion(texto):
                 "De acuerdo. Reiniciando el PC."
             )
 
-            time.sleep(0.5)
+            time.sleep(
+                0.5
+            )
 
             subprocess.Popen(
                 [
@@ -3709,7 +3886,9 @@ def procesar_confirmacion(texto):
 
             return "cerrar"
 
-        if accion.startswith("cerrar:"):
+        if accion.startswith(
+            "cerrar:"
+        ):
 
             nombre = accion.split(
                 ":",
@@ -3741,7 +3920,9 @@ def procesar_confirmacion(texto):
     )
 
 
-def extraer_objetivo_cierre(texto):
+def extraer_objetivo_cierre(
+    texto
+):
 
     texto = texto.lower().strip()
 
@@ -3816,7 +3997,8 @@ HERRAMIENTAS_JARVIS = {
         "descripcion":
             "Consulta el tiempo actual y la previsión del día para una ciudad.",
         "argumentos": {
-            "ciudad": "nombre de la ciudad"
+            "ciudad":
+                "nombre de la ciudad"
         }
     },
 
@@ -3854,7 +4036,8 @@ HERRAMIENTAS_JARVIS = {
         "descripcion":
             "Establece el volumen del sistema a un porcentaje.",
         "argumentos": {
-            "porcentaje": "número entre 0 y 100"
+            "porcentaje":
+                "número entre 0 y 100"
         }
     },
 
@@ -3862,7 +4045,8 @@ HERRAMIENTAS_JARVIS = {
         "descripcion":
             "Abre una aplicación, sitio web, URL o archivo mediante las funciones permitidas de Jarvis.",
         "argumentos": {
-            "objetivo": "nombre de aplicación, sitio web, URL o ruta"
+            "objetivo":
+                "nombre de aplicación, sitio web, URL o ruta"
         }
     },
 
@@ -3870,7 +4054,8 @@ HERRAMIENTAS_JARVIS = {
         "descripcion":
             "Busca información actual en Internet usando el buscador web de Jarvis.",
         "argumentos": {
-            "consulta": "consulta que se debe buscar"
+            "consulta":
+                "consulta que se debe buscar"
         }
     }
 }
@@ -3901,7 +4086,9 @@ def obtener_descripcion_herramientas():
     return texto.strip()
 
 
-def extraer_json_gemma(texto):
+def extraer_json_gemma(
+    texto
+):
 
     if not texto:
         return None
@@ -3909,9 +4096,15 @@ def extraer_json_gemma(texto):
     texto = texto.strip()
 
     try:
-        datos = json.loads(texto)
 
-        if isinstance(datos, dict):
+        datos = json.loads(
+            texto
+        )
+
+        if isinstance(
+            datos,
+            dict
+        ):
             return datos
 
     except Exception:
@@ -3932,7 +4125,10 @@ def extraer_json_gemma(texto):
             coincidencia.group(0)
         )
 
-        if isinstance(datos, dict):
+        if isinstance(
+            datos,
+            dict
+        ):
             return datos
 
     except Exception:
@@ -3941,7 +4137,9 @@ def extraer_json_gemma(texto):
     return None
 
 
-def decidir_herramienta(texto):
+def decidir_herramienta(
+    texto
+):
 
     prompt = (
         "Debes decidir si para responder a la petición "
@@ -4028,11 +4226,14 @@ def decidir_herramienta(texto):
             argumentos,
             dict
         ):
+
             argumentos = {}
 
         return {
-            "tool": herramienta,
-            "args": argumentos
+            "tool":
+                herramienta,
+            "args":
+                argumentos
         }
 
     except Exception as e:
@@ -4055,7 +4256,10 @@ def ejecutar_herramienta(
 
     argumentos = (
         argumentos
-        if isinstance(argumentos, dict)
+        if isinstance(
+            argumentos,
+            dict
+        )
         else {}
     )
 
@@ -4065,23 +4269,18 @@ def ejecutar_herramienta(
     )
 
     if nombre == "estado_ram":
-
         return estado_ram()
 
     if nombre == "estado_cpu":
-
         return estado_cpu()
 
     if nombre == "estado_gpu":
-
         return estado_gpu()
 
     if nombre == "estado_pc":
-
         return estado_pc()
 
     if nombre == "obtener_hora":
-
         return obtener_hora()
 
     if nombre == "obtener_tiempo":
@@ -4091,6 +4290,7 @@ def ejecutar_herramienta(
         )
 
         if not ciudad:
+
             return (
                 "No se ha especificado "
                 "ninguna ciudad."
@@ -4375,16 +4575,69 @@ def ejecutar_comando_directo(
 ):
 
     global esperando_ciudad_clima
+    global confirmacion_pendiente
 
     texto_limpio = (
         texto.lower().strip()
     )
+
+    # --------------------------------------------------------
+    # CANCELACIÓN GENERAL
+    # --------------------------------------------------------
+
+    cancelaciones = {
+        "para",
+        "parar",
+        "párate",
+        "parate",
+        "cancela",
+        "cancelar",
+        "cancelalo",
+        "cancelarlo",
+        "déjalo",
+        "dejalo"
+    }
+
+    texto_sin_acentos = quitar_acentos(
+        texto_limpio
+    )
+
+    if texto_sin_acentos in {
+        quitar_acentos(
+            palabra
+        )
+        for palabra in cancelaciones
+    }:
+
+        if esperando_ciudad_clima:
+
+            esperando_ciudad_clima = False
+
+            return (
+                "__CANCELAR_SILENCIOSO__"
+            )
+
+        if confirmacion_pendiente:
+
+            confirmacion_pendiente = None
+
+            return (
+                "Acción cancelada."
+            )
+
+    # --------------------------------------------------------
+    # CONFIRMACIÓN
+    # --------------------------------------------------------
 
     if confirmacion_pendiente:
 
         return procesar_confirmacion(
             texto
         )
+
+    # --------------------------------------------------------
+    # CIUDAD PENDIENTE PARA CLIMA
+    # --------------------------------------------------------
 
     if esperando_ciudad_clima:
 
@@ -4394,9 +4647,22 @@ def ejecutar_comando_directo(
             " .,?!"
         )
 
+        if not ciudad:
+
+            esperando_ciudad_clima = True
+
+            return (
+                "Dime la ciudad de la que "
+                "quieres saber el tiempo."
+            )
+
         return obtener_tiempo(
             ciudad
         )
+
+    # --------------------------------------------------------
+    # BLOQUEO
+    # --------------------------------------------------------
 
     if (
         "bloquea el pc"
@@ -4425,14 +4691,12 @@ def ejecutar_comando_directo(
             "No he podido bloquear el PC."
         )
 
+    # --------------------------------------------------------
+    # VOLUMEN
+    # --------------------------------------------------------
+
     texto_volumen = quitar_acentos(
         texto_limpio
-    )
-
-    texto_volumen = re.sub(
-        r"\bbaja\b",
-        "baja",
-        texto_volumen
     )
 
     texto_volumen = re.sub(
@@ -4492,9 +4756,6 @@ def ejecutar_comando_directo(
         or
         "mas volumen"
         in texto_volumen
-        or
-        "más volumen"
-        in texto_limpio
     ):
 
         if subir_volumen():
@@ -4606,6 +4867,10 @@ def ejecutar_comando_directo(
             "No he podido silenciar el volumen."
         )
 
+    # --------------------------------------------------------
+    # APAGAR / REINICIAR
+    # --------------------------------------------------------
+
     if (
         "apaga el pc"
         in texto_limpio
@@ -4654,6 +4919,10 @@ def ejecutar_comando_directo(
             "reiniciar"
         )
 
+    # --------------------------------------------------------
+    # CERRAR
+    # --------------------------------------------------------
+
     objetivo_cierre = extraer_objetivo_cierre(
         texto
     )
@@ -4663,6 +4932,10 @@ def ejecutar_comando_directo(
         return solicitar_confirmacion(
             "cerrar:" + objetivo_cierre
         )
+
+    # --------------------------------------------------------
+    # ABRIR
+    # --------------------------------------------------------
 
     objetivo = extraer_objetivo_apertura(
         texto
@@ -4688,6 +4961,10 @@ def ejecutar_comando_directo(
             f"o sitio llamado {objetivo}."
         )
 
+    # --------------------------------------------------------
+    # BÚSQUEDA
+    # --------------------------------------------------------
+
     if extraer_consulta_busqueda(
         texto
     ):
@@ -4695,6 +4972,10 @@ def ejecutar_comando_directo(
         return ejecutar_busqueda_web(
             texto
         )
+
+    # --------------------------------------------------------
+    # HORA
+    # --------------------------------------------------------
 
     if (
         "qué hora es"
@@ -4708,6 +4989,92 @@ def ejecutar_comando_directo(
     ):
 
         return obtener_hora()
+
+    # --------------------------------------------------------
+    # HARDWARE
+    #
+    # IMPORTANTE:
+    # Se comprueba ANTES del clima para que preguntas como
+    # "qué temperatura tiene la gráfica" no se interpreten
+    # como una consulta meteorológica.
+    # --------------------------------------------------------
+
+    if (
+        "estado del pc"
+        in texto_limpio
+        or
+        "estado del ordenador"
+        in texto_limpio
+        or
+        "cómo está el pc"
+        in texto_limpio
+        or
+        "como está el pc"
+        in texto_limpio
+        or
+        "cómo está mi pc"
+        in texto_limpio
+        or
+        "como está mi pc"
+        in texto_limpio
+    ):
+
+        return estado_pc()
+
+    if (
+        "ram"
+        in texto_limpio
+        or
+        "memoria ram"
+        in texto_limpio
+    ):
+
+        return estado_ram()
+
+    if (
+        "cpu"
+        in texto_limpio
+        or
+        "procesador"
+        in texto_limpio
+    ):
+
+        return estado_cpu()
+
+    if (
+        "gpu"
+        in texto_limpio
+        or
+        "gráfica"
+        in texto_limpio
+        or
+        "grafica"
+        in texto_limpio
+        or
+        "tarjeta gráfica"
+        in texto_limpio
+        or
+        "tarjeta grafica"
+        in texto_limpio
+        or
+        "temperatura de la gráfica"
+        in texto_limpio
+        or
+        "temperatura de la grafica"
+        in texto_limpio
+        or
+        "temperatura de gpu"
+        in texto_limpio
+        or
+        "temperatura gpu"
+        in texto_limpio
+    ):
+
+        return estado_gpu()
+
+    # --------------------------------------------------------
+    # CLIMA
+    # --------------------------------------------------------
 
     if (
         "tiempo"
@@ -4736,59 +5103,6 @@ def ejecutar_comando_directo(
             "Dime la ciudad de la que "
             "quieres saber el tiempo."
         )
-
-    if "ram" in texto_limpio:
-
-        return estado_ram()
-
-    if (
-        "cpu" in texto_limpio
-        or
-        "procesador"
-        in texto_limpio
-    ):
-
-        return estado_cpu()
-
-    if (
-        "gpu" in texto_limpio
-        or
-        "gráfica"
-        in texto_limpio
-        or
-        "grafica"
-        in texto_limpio
-        or
-        "tarjeta gráfica"
-        in texto_limpio
-        or
-        "tarjeta grafica"
-        in texto_limpio
-    ):
-
-        return estado_gpu()
-
-    if (
-        "estado del pc"
-        in texto_limpio
-        or
-        "estado del ordenador"
-        in texto_limpio
-        or
-        "cómo está el pc"
-        in texto_limpio
-        or
-        "como está el pc"
-        in texto_limpio
-        or
-        "cómo está mi pc"
-        in texto_limpio
-        or
-        "como está mi pc"
-        in texto_limpio
-    ):
-
-        return estado_pc()
 
     return None
 
@@ -4823,13 +5137,9 @@ def preguntar_gemma(
             max_tokens=200
         )
 
-        respuesta_texto = (
-
-            respuesta.choices[0]
-            .message.content
-            or ""
-
-        ).strip()
+        respuesta_texto = extraer_respuesta_gemma(
+            respuesta
+        )
 
         if not respuesta_texto:
 
@@ -4866,13 +5176,9 @@ def preguntar_gemma(
                 max_tokens=200
             )
 
-            respuesta_texto = (
-
-                respuesta.choices[0]
-                .message.content
-                or ""
-
-            ).strip()
+            respuesta_texto = extraer_respuesta_gemma(
+                respuesta
+            )
 
         if not respuesta_texto:
 
@@ -4935,7 +5241,9 @@ def procesar_orden():
         texto.lower().strip()
     )
 
-    orden_aprendizaje = extraer_orden_aprendizaje(texto)
+    # --------------------------------------------------------
+    # CONFIRMACIÓN
+    # --------------------------------------------------------
 
     if confirmacion_pendiente:
 
@@ -4944,7 +5252,6 @@ def procesar_orden():
         )
 
         if resultado == "cerrar":
-
             return "cerrar"
 
         if resultado:
@@ -4953,19 +5260,36 @@ def procesar_orden():
                 f"🤖 Jarvis: {resultado}"
             )
 
-            hablar(
-                resultado
-            )
+            if resultado != "__CANCELAR_SILENCIOSO__":
+
+                hablar(
+                    resultado
+                )
 
         return "continuar"
 
-    orden_aprendizaje = extraer_orden_aprendizaje(texto)
+    # --------------------------------------------------------
+    # APRENDIZAJE
+    # --------------------------------------------------------
+
+    orden_aprendizaje = (
+        extraer_orden_aprendizaje(
+            texto
+        )
+    )
 
     if orden_aprendizaje:
+
         frase, comando = orden_aprendizaje
 
-        if aprender_comando(frase, comando):
-            respuesta = "De acuerdo. Lo recordaré."
+        if aprender_comando(
+            frase,
+            comando
+        ):
+
+            respuesta = (
+                "De acuerdo. Lo recordaré."
+            )
 
             print(
                 f"🤖 Jarvis: {respuesta}"
@@ -4977,7 +5301,10 @@ def procesar_orden():
 
             return "continuar"
 
-        respuesta = "No he podido guardar ese aprendizaje."
+        respuesta = (
+            "No he podido guardar "
+            "ese aprendizaje."
+        )
 
         print(
             f"🤖 Jarvis: {respuesta}"
@@ -4989,8 +5316,21 @@ def procesar_orden():
 
         return "continuar"
 
-    texto = aplicar_aprendizaje(texto)
-    texto_limpio = texto.lower().strip()
+    # --------------------------------------------------------
+    # APLICAR APRENDIZAJE
+    # --------------------------------------------------------
+
+    texto = aplicar_aprendizaje(
+        texto
+    )
+
+    texto_limpio = (
+        texto.lower().strip()
+    )
+
+    # --------------------------------------------------------
+    # SALIR
+    # --------------------------------------------------------
 
     if (
         texto_limpio == "salir"
@@ -5046,8 +5386,10 @@ def procesar_orden():
     if resultado:
 
         if resultado == "cerrar":
-
             return "cerrar"
+
+        if resultado == "__CANCELAR_SILENCIOSO__":
+            return "continuar"
 
         print(
             f"🤖 Jarvis: {resultado}"
@@ -5072,15 +5414,19 @@ def procesar_orden():
     if respuesta_herramienta:
 
         memoria.append({
+
             "role":
                 "user",
+
             "content":
                 texto
         })
 
         memoria.append({
+
             "role":
                 "assistant",
+
             "content":
                 respuesta_herramienta
         })
@@ -5197,11 +5543,9 @@ try:
             resultado = procesar_orden()
 
             if resultado == "esperar":
-
                 break
 
             if resultado == "cerrar":
-
                 raise SystemExit
 
 except KeyboardInterrupt:
@@ -5217,15 +5561,20 @@ except SystemExit:
 finally:
 
     interrumpir_voz.set()
+
     escuchando_para.clear()
 
     try:
+
         sd.stop()
+
     except Exception:
         pass
 
     try:
+
         pynvml.nvmlShutdown()
+
     except Exception:
         pass
 
