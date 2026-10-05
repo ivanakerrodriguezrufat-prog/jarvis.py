@@ -23,6 +23,13 @@ from faster_whisper import WhisperModel
 from openai import OpenAI
 from piper import PiperVoice
 
+try:
+    from google import genai
+    from google.genai import types
+except ImportError:
+    genai = None
+    types = None
+
 
 # ============================================================
 # CONFIGURACIÓN
@@ -54,6 +61,12 @@ PARAR_FILE = os.path.join(
 
 GEMMA_MODEL = "google/gemma-4-e4b"
 LM_STUDIO_URL = "http://localhost:1234/v1"
+
+GEMINI_MODEL = "gemini-3.8-flash"
+GEMINI_API_KEY = os.getenv(
+    "GEMINI_API_KEY",
+    ""
+).strip()
 
 PIPER_MODEL = os.path.join(
     BASE_DIR,
@@ -154,6 +167,41 @@ client = OpenAI(
 )
 
 print("Gemma conectado.")
+
+
+# ============================================================
+# GEMINI + GOOGLE SEARCH
+# ============================================================
+
+gemini_client = None
+
+if genai is None:
+    print(
+        "⚠️ google-genai no está instalado. "
+        "Gemini con Google Search no estará disponible."
+    )
+
+elif not GEMINI_API_KEY:
+    print(
+        "⚠️ GEMINI_API_KEY no está configurada. "
+        "Gemini con Google Search no estará disponible."
+    )
+
+else:
+    try:
+        gemini_client = genai.Client(
+            api_key=GEMINI_API_KEY
+        )
+
+        print(
+            "Gemini + Google Search conectado."
+        )
+
+    except Exception as e:
+        print(
+            f"⚠️ No se pudo conectar con Gemini: "
+            f"{repr(e)}"
+        )
 
 
 # ============================================================
@@ -2808,6 +2856,256 @@ def descargar_buscador_get(
         )
 
 
+def extraer_texto_gemini(
+    respuesta
+):
+    try:
+        texto = getattr(
+            respuesta,
+            "text",
+            None
+        )
+
+        if isinstance(
+            texto,
+            str
+        ):
+            texto = texto.strip()
+
+            if texto:
+                return texto
+
+    except Exception:
+        pass
+
+    try:
+        candidatos = getattr(
+            respuesta,
+            "candidates",
+            []
+        )
+
+        partes = []
+
+        for candidato in candidatos:
+            contenido = getattr(
+                candidato,
+                "content",
+                None
+            )
+
+            if not contenido:
+                continue
+
+            partes_contenido = getattr(
+                contenido,
+                "parts",
+                []
+            )
+
+            for parte in partes_contenido:
+                texto = getattr(
+                    parte,
+                    "text",
+                    None
+                )
+
+                if texto:
+                    partes.append(
+                        str(texto)
+                    )
+
+        return " ".join(
+            partes
+        ).strip()
+
+    except Exception:
+        return ""
+
+
+def mostrar_citas_gemini(
+    respuesta
+):
+    try:
+        citas = []
+        vistos = set()
+
+        candidatos = getattr(
+            respuesta,
+            "candidates",
+            []
+        )
+
+        for candidato in candidatos:
+            grounding = getattr(
+                candidato,
+                "grounding_metadata",
+                None
+            )
+
+            if not grounding:
+                continue
+
+            chunks = getattr(
+                grounding,
+                "grounding_chunks",
+                []
+            )
+
+            for chunk in chunks:
+                fuente = getattr(
+                    chunk,
+                    "web",
+                    None
+                )
+
+                if not fuente:
+                    continue
+
+                titulo = str(
+                    getattr(
+                        fuente,
+                        "title",
+                        ""
+                    )
+                    or ""
+                ).strip()
+
+                url = str(
+                    getattr(
+                        fuente,
+                        "uri",
+                        ""
+                    )
+                    or ""
+                ).strip()
+
+                clave = (
+                    titulo,
+                    url
+                )
+
+                if (
+                    url
+                    and clave not in vistos
+                ):
+                    vistos.add(
+                        clave
+                    )
+
+                    citas.append({
+                        "titulo":
+                            titulo,
+                        "url":
+                            url
+                    })
+
+        if not citas:
+            return
+
+        print(
+            "🔗 Fuentes de Google:"
+        )
+
+        for cita in citas[:8]:
+            if cita["titulo"]:
+                print(
+                    f"   - {cita['titulo']}: "
+                    f"{cita['url']}"
+                )
+            else:
+                print(
+                    f"   - {cita['url']}"
+                )
+
+    except Exception as e:
+        print(
+            f"⚠️ No se pudieron mostrar "
+            f"las citas de Google: {e}"
+        )
+
+
+def preguntar_gemini_google(
+    pregunta
+):
+    if gemini_client is None:
+        return None
+
+    pregunta = normalizar_consulta_busqueda(
+        pregunta
+    )
+
+    if not pregunta:
+        return None
+
+    print(
+        "🔎 Preguntando a Gemini con "
+        "Google Search..."
+    )
+
+    prompt = (
+        "Responde en español y de forma breve, "
+        "directa y natural a la pregunta del usuario.\n"
+        "Usa Google Search para comprobar la información "
+        "actual antes de responder.\n"
+        "Da prioridad a fuentes oficiales, tiendas "
+        "oficiales y fuentes fiables.\n"
+        "Si preguntas por precios, busca precios actuales "
+        "en España y especifica claramente si es un precio "
+        "desde, aproximado o de una tienda concreta.\n"
+        "No inventes datos.\n"
+        "No muestres URLs.\n"
+        "No muestres razonamiento interno.\n"
+        "Responde solamente con la respuesta final.\n\n"
+        "Pregunta del usuario:\n"
+        + pregunta
+    )
+
+    try:
+        respuesta = gemini_client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                temperature=0.2,
+                tools=[
+                    types.Tool(
+                        google_search=types.GoogleSearch()
+                    )
+                ]
+            )
+        )
+
+        texto = extraer_texto_gemini(
+            respuesta
+        )
+
+        if not texto:
+            print(
+                "⚠️ Gemini no devolvió "
+                "contenido final."
+            )
+            return None
+
+        print(
+            "✅ Respuesta obtenida de "
+            "Gemini + Google Search."
+        )
+
+        mostrar_citas_gemini(
+            respuesta
+        )
+
+        return texto.strip()
+
+    except Exception as e:
+        print(
+            f"❌ ERROR GEMINI + GOOGLE SEARCH: "
+            f"{repr(e)}"
+        )
+
+        return None
+
+
 def buscar_internet(
     consulta
 ):
@@ -2822,7 +3120,23 @@ def buscar_internet(
     )
 
     # --------------------------------------------------------
-    # 1. DUCKDUCKGO HTML POR POST
+    # 1. GEMINI + GOOGLE SEARCH
+    # --------------------------------------------------------
+
+    respuesta_gemini = preguntar_gemini_google(
+        consulta
+    )
+
+    if respuesta_gemini:
+        return respuesta_gemini
+
+    print(
+        "🔁 Gemini no disponible o falló. "
+        "Usando el buscador web de respaldo..."
+    )
+
+    # --------------------------------------------------------
+    # 2. DUCKDUCKGO HTML POR POST
     # --------------------------------------------------------
 
     try:
@@ -4164,11 +4478,7 @@ def ejecutar_busqueda_web(
             "resultados de Internet."
         )
 
-    return preguntar_gemma_con_web(
-        texto,
-        consulta,
-        informacion
-    )
+    return informacion
 
 
 # ============================================================
@@ -5611,11 +5921,7 @@ def ejecutar_herramienta(
                 "resultados de Internet."
             )
 
-        return preguntar_gemma_con_web(
-            consulta,
-            consulta,
-            informacion
-        )
+        return informacion
 
     return None
 
